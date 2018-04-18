@@ -12,10 +12,18 @@ import (
 var ballast = make([]string, 0)
 var empties = make([]string, 0)
 
-var regexps = []*regexp.Regexp{
+
+// ballast files
+var fre = []*regexp.Regexp{
 	regexp.MustCompile(`^\._.*`),
 	regexp.MustCompile(`^\.DS_Store$`),
 	regexp.MustCompile(`^Thumbs.db$`),
+	regexp.MustCompile(`^node_modules$`),
+}
+
+// ballast directories
+var dre = []*regexp.Regexp{
+	//regexp.MustCompile(`^.+/src/.+/node_modules$`),
 }
 
 func check(err error) {
@@ -25,7 +33,7 @@ func check(err error) {
 	}
 }
 
-func IsEmptyDir(name string) (bool, error) {
+func isEmptyDir(name string) (bool, error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return false, err
@@ -40,15 +48,21 @@ func IsEmptyDir(name string) (bool, error) {
 }
 
 func findBallast(path string, f os.FileInfo, err error) error {
-	//fmt.Printf("Visited: %s\n", path)
-	fileInfo, err := os.Stat(path)
-	check(err)
-	if !fileInfo.IsDir() {
-		base := filepath.Base(path)
-		for _, regexp := range regexps {
-			if regexp.MatchString(base) {
+	if err != nil {
+		fmt.Printf("Skipped: %s: %s\n", path, err)
+		return nil
+	}
+	base := filepath.Base(path)
+	if f.IsDir() {
+		for _, r := range dre {
+			if r.MatchString(base) {
 				ballast = append(ballast, path)
-				//fmt.Printf("Ballast: %s\n", path)
+			}
+		}
+	} else {
+		for _, r := range fre {
+			if r.MatchString(base) {
+				ballast = append(ballast, path)
 			}
 		}
 	}
@@ -56,15 +70,15 @@ func findBallast(path string, f os.FileInfo, err error) error {
 }
 
 func findEmptyDirs(path string, f os.FileInfo, err error) error {
-	//fmt.Printf("Visited: %s\n", path)
-	fileInfo, err := os.Stat(path)
-	check(err)
-	if fileInfo.IsDir() {
-		empty, err := IsEmptyDir(path)
+	if err != nil {
+		fmt.Printf("Skipped: %s: %s\n", path, err)
+		return nil
+	}
+	if f.IsDir() {
+		empty, err := isEmptyDir(path)
 		check(err)
 		if empty {
 			empties = append(empties, path)
-			//fmt.Printf("Empty: %s\n", path)
 		}
 	}
 	return nil
@@ -88,12 +102,13 @@ func exists(path string) bool {
 }
 
 func main() {
+	var root string
 	flag.Parse()
-	if len(flag.Args()) != 1 {
-		fmt.Println("Missing directory argument!")
-		os.Exit(1)
+	if len(flag.Args()) == 1 {
+		root = flag.Arg(0)
+	} else {
+		root, _ = os.Getwd()
 	}
-	root := flag.Arg(0)
 	err := filepath.Walk(root, findBallast)
 	check(err)
 	deleteAll(ballast)
